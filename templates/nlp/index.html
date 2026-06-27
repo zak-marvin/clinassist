@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ClinAssist Uganda</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          navy:    { 950: '#060d1a', 900: '#0a1628', 800: '#0f2040', 700: '#162a52', 600: '#1e3a6e' },
+          medical: { 400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8' },
+          slate:   { 700: '#334155', 600: '#475569', 500: '#64748b', 400: '#94a3b8', 300: '#cbd5e1', 200: '#e2e8f0' },
+          alert:   { red: '#ef4444', 'red-dim': '#450a0a', green: '#22c55e', 'green-dim': '#052e16', amber: '#f59e0b', 'amber-dim': '#431407' },
+        },
+        fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+      }
+    }
+  }
+</script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #060d1a; color: #e2e8f0; font-family: Inter, system-ui, sans-serif; min-height: 100vh; overflow-x: hidden; }
+  .card { background: #0a1628; border: 1px solid #162a52; border-radius: 10px; }
+  .scrollable::-webkit-scrollbar { width: 4px; }
+  .scrollable::-webkit-scrollbar-track { background: transparent; }
+  .scrollable::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+  .section-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #60a5fa; border-left: 2px solid #2563eb; padding-left: 8px; margin-bottom: 10px; display: block; }
+  .hidden { display: none !important; }
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body class="flex flex-col min-h-screen">
+
+<!-- Header -->
+<header style="background:#0a1628; border-bottom:1px solid #162a52;" class="fixed top-0 w-full z-50 h-14">
+  <div class="flex items-center justify-between h-full px-5 max-w-screen-2xl mx-auto">
+    <div class="flex items-center gap-3">
+      <span class="material-symbols-outlined" style="color:#3b82f6; font-size:22px;">clinical_notes</span>
+      <span style="font-size:16px; font-weight:700; color:#e2e8f0; letter-spacing:-.01em;">ClinAssist <span style="color:#3b82f6;">Uganda</span></span>
+      <span style="font-size:10px; font-family:'JetBrains Mono',monospace; color:#60a5fa; background:#0f2040; border:1px solid #1e3a6e; padding:2px 8px; border-radius:4px; letter-spacing:.05em;">CLINICAL DSS</span>
+    </div>
+    <span style="font-size:10px; font-family:'JetBrains Mono',monospace; color:#64748b; background:#0f2040; border:1px solid #162a52; padding:3px 10px; border-radius:4px;">EDUCATIONAL USE ONLY</span>
+  </div>
+</header>
+
+<!-- Main -->
+<main class="flex-grow pt-16 pb-4 px-4 max-w-screen-2xl mx-auto w-full">
+  <div class="flex flex-col lg:flex-row gap-4 pt-4" style="min-height: calc(100vh - 80px);">
+
+    <!-- Left: Input -->
+    <section class="lg:w-2/5 flex flex-col">
+      <div class="card flex flex-col gap-4 p-5 h-full">
+
+        <div>
+          <span class="section-label">Input Module</span>
+          <h2 style="font-size:20px; font-weight:600; color:#e2e8f0;">Clinical Note</h2>
+          <p style="font-size:12px; color:#64748b; margin-top:3px;">Enter patient symptoms, history, or lab results</p>
+        </div>
+
+        <!-- Demo pills -->
+        <div class="flex flex-wrap gap-2">
+          {% for key, case in demo_cases.items %}
+          <button class="demo-btn" data-text="{{ case.text }}"
+            style="font-size:11px; font-family:'JetBrains Mono',monospace; padding:4px 12px; border-radius:999px; border:1px solid #1e3a6e; color:#60a5fa; background:transparent; cursor:pointer; transition:all .15s;"
+            onmouseover="this.style.background='#0f2040'" onmouseout="this.style.background='transparent'">
+            {{ case.label }}
+          </button>
+          {% endfor %}
+        </div>
+
+        <!-- Textarea -->
+        <div class="flex flex-col flex-grow gap-2">
+          <textarea id="clinicalNote"
+            style="width:100%; flex:1; min-height:260px; background:#060d1a; border:1px solid #1e3a6e; border-radius:8px; padding:14px; font-size:14px; color:#e2e8f0; line-height:1.6; resize:none; outline:none; font-family:Inter,sans-serif; transition:border-color .15s;"
+            placeholder="Start typing or select a demo case above...&#10;&#10;e.g. 35yo female, 3-day fever 39.8°C, RDT positive for P. falciparum, Hb 7.2 g/dL, drowsy on arrival."
+            onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#1e3a6e'"></textarea>
+
+          <div class="flex items-center justify-between">
+            <span id="charCount" style="font-size:11px; font-family:'JetBrains Mono',monospace; color:#475569;">0 / 5000</span>
+            <button id="analyseBtn"
+              style="display:flex; align-items:center; gap:8px; background:#2563eb; color:#fff; border:none; border-radius:8px; padding:9px 20px; font-size:14px; font-weight:600; cursor:pointer; transition:all .15s;"
+              onmouseover="this.style.background='#1d4ed8'" onmouseout="if(!this.disabled)this.style.background='#2563eb'">
+              <span id="btnLabel">Analyse</span>
+              <span class="material-symbols-outlined" style="font-size:18px; font-variation-settings:'FILL' 1;">analytics</span>
+            </button>
+          </div>
+          <p id="inputError" class="hidden" style="font-size:12px; color:#ef4444; margin-top:2px;"></p>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Right: Results -->
+    <section class="lg:w-3/5 flex flex-col">
+      <div class="card flex flex-col p-5 scrollable overflow-y-auto" style="max-height:calc(100vh - 100px);">
+
+        <!-- Placeholder -->
+        <div id="placeholder" class="flex flex-col items-center justify-center py-24 gap-4">
+          <span class="material-symbols-outlined" style="font-size:48px; color:#1e3a6e;">analytics</span>
+          <p style="font-size:12px; font-family:'JetBrains Mono',monospace; color:#334155; letter-spacing:.05em;">AWAITING CLINICAL INPUT</p>
+        </div>
+
+        <!-- Loading -->
+        <div id="loadingState" class="hidden flex flex-col items-center justify-center py-24 gap-4">
+          <div class="spin" style="width:36px; height:36px; border:2px solid #1e3a6e; border-top-color:#3b82f6; border-radius:50%;"></div>
+          <p style="font-size:12px; font-family:'JetBrains Mono',monospace; color:#60a5fa;">PROCESSING CLINICAL NOTE…</p>
+          <p style="font-size:11px; color:#334155;">Groq LLM · entity extraction + differential</p>
+        </div>
+
+        <!-- Error -->
+        <div id="errorState" class="hidden" style="background:#450a0a; border:1px solid #ef4444; border-radius:8px; padding:16px;">
+          <div style="display:flex; align-items:center; gap:8px; color:#ef4444; margin-bottom:6px;">
+            <span class="material-symbols-outlined" style="font-size:18px;">error</span>
+            <span style="font-size:11px; font-family:'JetBrains Mono',monospace; letter-spacing:.05em;">ERROR</span>
+          </div>
+          <p id="errorText" style="font-size:13px; color:#fca5a5;"></p>
+        </div>
+
+        <!-- Results -->
+        <div id="resultsContent" class="hidden flex flex-col gap-6">
+
+          <!-- Entities -->
+          <div>
+            <span class="section-label">Extracted Entities</span>
+            <div id="entitiesGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(160px,1fr)); gap:8px;"></div>
+          </div>
+
+          <!-- Divider -->
+          <div style="border-top:1px solid #0f2040;"></div>
+
+          <!-- Conditions -->
+          <div>
+            <span class="section-label">Possible Conditions</span>
+            <div id="conditionsList" class="flex flex-col gap-2"></div>
+          </div>
+
+          <!-- Red Flags -->
+          <div id="redFlagsBlock">
+            <span class="section-label">Red Flags</span>
+            <div id="redFlagsList" class="flex flex-wrap gap-2"></div>
+          </div>
+
+          <!-- Investigations -->
+          <div>
+            <span class="section-label">Suggested Investigations</span>
+            <div id="investigationsList" class="flex flex-wrap gap-2"></div>
+          </div>
+
+          <!-- Management -->
+          <div>
+            <span class="section-label">Management Considerations</span>
+            <ul id="managementList" style="list-style:none; display:flex; flex-direction:column; gap:5px;"></ul>
+          </div>
+
+          <!-- Summary -->
+          <div style="background:#0f2040; border:1px solid #162a52; border-radius:8px; padding:14px;">
+            <span class="section-label" style="margin-bottom:8px;">Clinical Summary</span>
+            <p id="clinicalSummary" style="font-size:13px; color:#94a3b8; line-height:1.7;"></p>
+          </div>
+
+          <!-- Disclaimer -->
+          <div style="border-top:1px solid #0f2040; padding-top:12px;">
+            <p id="disclaimerText" style="font-size:10px; font-family:'JetBrains Mono',monospace; color:#334155; text-align:center; letter-spacing:.06em; text-transform:uppercase;"></p>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<script>
+const CSRF = "{{ csrf_token }}";
+
+const textarea       = document.getElementById('clinicalNote');
+const charCountEl    = document.getElementById('charCount');
+const analyseBtn     = document.getElementById('analyseBtn');
+const btnLabel       = document.getElementById('btnLabel');
+const inputError     = document.getElementById('inputError');
+const placeholder    = document.getElementById('placeholder');
+const loadingState   = document.getElementById('loadingState');
+const errorState     = document.getElementById('errorState');
+const resultsContent = document.getElementById('resultsContent');
+
+// Char counter
+textarea.addEventListener('input', () => {
+  const len = textarea.value.length;
+  charCountEl.textContent = `${len} / 5000`;
+  charCountEl.style.color = len > 5000 ? '#ef4444' : '#475569';
+});
+
+// Demo cases
+document.querySelectorAll('.demo-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    textarea.value = btn.dataset.text;
+    textarea.dispatchEvent(new Event('input'));
+  });
+});
+
+// Analyse
+analyseBtn.addEventListener('click', async () => {
+  const note = textarea.value.trim();
+  if (!note) { showInputError('Please enter a clinical note first.'); return; }
+  if (note.length > 5000) { showInputError('Note exceeds 5000 characters.'); return; }
+  hideInputError();
+  setLoading(true);
+  try {
+    const resp = await fetch('/analyse/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+      body: JSON.stringify({ note }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || (data.error && !data.entities)) { showError(data.error || 'Something went wrong.'); return; }
+    renderResults(data);
+  } catch (e) {
+    showError('Network error — please check your connection.');
+  } finally {
+    setLoading(false);
+  }
+});
+
+const CAT_LABELS = {
+  symptoms: 'Symptoms', diseases: 'Diseases',
+  drugs: 'Drugs / Rx', lab_values: 'Lab Values', anatomy: 'Anatomy',
+};
+
+// Tag colors per category
+const CAT_STYLE = {
+  symptoms:   { bg:'#0f2040', color:'#60a5fa', border:'#1e3a6e' },
+  diseases:   { bg:'#450a0a', color:'#fca5a5', border:'#7f1d1d' },
+  drugs:      { bg:'#052e16', color:'#4ade80', border:'#14532d' },
+  lab_values: { bg:'#1c1917', color:'#fbbf24', border:'#431407' },
+  anatomy:    { bg:'#1e1b4b', color:'#a5b4fc', border:'#312e81' },
+};
+
+function renderResults({ entities, llm_result }) {
+  // Entities
+  const grid = document.getElementById('entitiesGrid');
+  grid.innerHTML = '';
+  let anyEntities = false;
+  for (const [cat, items] of Object.entries(entities)) {
+    if (!items || !items.length) continue;
+    anyEntities = true;
+    const s = CAT_STYLE[cat] || CAT_STYLE.symptoms;
+    const card = document.createElement('div');
+    card.style.cssText = `background:#0a1628; border:1px solid #162a52; border-radius:8px; padding:10px;`;
+    card.innerHTML = `
+      <div style="font-size:10px; font-family:'JetBrains Mono',monospace; color:#475569; letter-spacing:.06em; text-transform:uppercase; margin-bottom:7px;">${CAT_LABELS[cat] || cat}</div>
+      <div style="display:flex; flex-wrap:wrap; gap:4px;">
+        ${items.map(i => `<span style="font-size:11px; padding:2px 8px; background:${s.bg}; color:${s.color}; border:1px solid ${s.border}; border-radius:4px;">${i}</span>`).join('')}
+      </div>`;
+    grid.appendChild(card);
+  }
+  if (!anyEntities) {
+    grid.innerHTML = `<p style="font-size:12px; color:#475569; grid-column:1/-1;">No entities extracted.</p>`;
+  }
+
+  // Conditions
+  const condEl = document.getElementById('conditionsList');
+  condEl.innerHTML = '';
+  (llm_result.possible_conditions || []).forEach(c => {
+    const l = (c.likelihood || '').toLowerCase();
+    const barColor   = l === 'high' ? '#ef4444' : l === 'moderate' ? '#f59e0b' : '#22c55e';
+    const badgeBg    = l === 'high' ? '#450a0a' : l === 'moderate' ? '#431407' : '#052e16';
+    const badgeColor = l === 'high' ? '#fca5a5' : l === 'moderate' ? '#fcd34d' : '#4ade80';
+    const el = document.createElement('div');
+    el.style.cssText = `display:flex; background:#0f2040; border:1px solid #162a52; border-radius:8px; overflow:hidden;`;
+    el.innerHTML = `
+      <div style="width:4px; background:${barColor}; flex-shrink:0;"></div>
+      <div style="padding:10px 12px; flex:1;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:4px;">
+          <strong style="font-size:14px; color:#e2e8f0;">${c.condition}</strong>
+          <span style="font-size:10px; font-family:'JetBrains Mono',monospace; padding:2px 8px; background:${badgeBg}; color:${badgeColor}; border-radius:4px; white-space:nowrap;">${(c.likelihood||'').toUpperCase()}</span>
+        </div>
+        <p style="font-size:12px; color:#64748b; font-style:italic;">${c.reasoning}</p>
+      </div>`;
+    condEl.appendChild(el);
+  });
+
+  // Red flags
+  const redFlags = llm_result.red_flags || [];
+  document.getElementById('redFlagsBlock').classList.toggle('hidden', !redFlags.length);
+  document.getElementById('redFlagsList').innerHTML = redFlags.map(f => `
+    <div style="display:flex; align-items:center; gap:6px; padding:6px 12px; background:#450a0a; border:1px solid #7f1d1d; border-radius:6px; color:#fca5a5; font-size:12px;">
+      <span class="material-symbols-outlined" style="font-size:16px;">warning</span>${f}
+    </div>`).join('');
+
+  // Investigations
+  document.getElementById('investigationsList').innerHTML =
+    (llm_result.investigations || []).map(i =>
+      `<span style="font-size:12px; padding:5px 12px; background:#0f2040; color:#60a5fa; border:1px solid #1e3a6e; border-radius:999px;">${i}</span>`
+    ).join('');
+
+  // Management
+  document.getElementById('managementList').innerHTML =
+    (llm_result.management_considerations || []).map(m =>
+      `<li style="font-size:13px; color:#94a3b8; padding-left:14px; position:relative;">
+        <span style="position:absolute; left:0; color:#2563eb;">›</span>${m}
+      </li>`
+    ).join('');
+
+  document.getElementById('clinicalSummary').textContent = llm_result.clinical_note || '';
+  document.getElementById('disclaimerText').textContent  = llm_result.disclaimer    || '';
+
+  placeholder.classList.add('hidden');
+  loadingState.classList.add('hidden');
+  errorState.classList.add('hidden');
+  resultsContent.classList.remove('hidden');
+}
+
+function setLoading(on) {
+  analyseBtn.disabled = on;
+  analyseBtn.style.opacity = on ? '0.6' : '1';
+  btnLabel.textContent = on ? 'Analysing…' : 'Analyse';
+  placeholder.classList.toggle('hidden', on);
+  loadingState.classList.toggle('hidden', !on);
+  if (on) { resultsContent.classList.add('hidden'); errorState.classList.add('hidden'); }
+}
+
+function showInputError(msg) { inputError.textContent = msg; inputError.classList.remove('hidden'); }
+function hideInputError()    { inputError.classList.add('hidden'); }
+function showError(msg) {
+  document.getElementById('errorText').textContent = msg;
+  placeholder.classList.add('hidden');
+  loadingState.classList.add('hidden');
+  resultsContent.classList.add('hidden');
+  errorState.classList.remove('hidden');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+django>=4.2,<5.0
+python-dotenv>=1.0
+requests>=2.31
+groq>=0.9.0
+gunicorn>=21.2.0
+google-generativeai>=0.5.0
