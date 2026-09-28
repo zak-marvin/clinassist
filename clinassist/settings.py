@@ -54,4 +54,4 @@ HF_API_TOKEN    = os.getenv("HF_API_TOKEN", "")            # HuggingFace
 HF_NER_MODEL    = "d4data/biomedical-ner-all"
 
 # Groq model (free tier — plenty for this use case)
-GROQ_MODEL      = "llama-3.1-8b-instant"
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
