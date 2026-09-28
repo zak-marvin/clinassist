@@ -55,3 +55,4 @@ HF_NER_MODEL    = "d4data/biomedical-ner-all"
 
 # Groq model (free tier — plenty for this use case)
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+GROQ_FALLBACK_MODEL = os.getenv("GROQ_FALLBACK_MODEL", "openai/gpt-oss-120b")

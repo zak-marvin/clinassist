@@ -1,11 +1,10 @@
 import json
 import logging
 from django.shortcuts import render
-from django.http import JsonResponse
+from django.http import JsonResponse, StreamingHttpResponse
 from django.views.decorators.http import require_POST
-from django.views.decorators.csrf import csrf_exempt
 
-from .services import run_pipeline
+from .services import run_pipeline, run_pipeline_events
 
 logger = logging.getLogger(__name__)
 
@@ -48,22 +47,45 @@ def index(request):
     return render(request, "nlp/index.html", {"demo_cases": DEMO_CASES})
 
 
+def _get_note(request) -> str:
+    try:
+        return json.loads(request.body).get("note", "").strip()
+    except (json.JSONDecodeError, AttributeError):
+        return request.POST.get("note", "").strip()
+
+
 @require_POST
 def analyse(request):
-    """AJAX endpoint — receives clinical note, returns JSON result."""
-    try:
-        body = json.loads(request.body)
-        note = body.get("note", "").strip()
-    except (json.JSONDecodeError, AttributeError):
-        note = request.POST.get("note", "").strip()
-
+    """Non-streaming endpoint: returns the final JSON in one response."""
+    note = _get_note(request)
     if not note:
         return JsonResponse({"error": "No clinical note provided."}, status=400)
 
     logger.info("Analysing note (%d chars)", len(note))
     result = run_pipeline(note)
-
-    if "error" in result and not result.get("entities"):
+    if "error" in result:
         return JsonResponse(result, status=422)
-
     return JsonResponse(result)
+
+
+@require_POST
+def analyse_stream(request):
+    """Streaming endpoint: newline-delimited JSON events (status... then result/error)."""
+    note = _get_note(request)
+    if not note:
+        return JsonResponse({"error": "No clinical note provided."}, status=400)
+
+    logger.info("Analysing note, streaming (%d chars)", len(note))
+
+    def event_stream():
+        try:
+            for event in run_pipeline_events(note):
+                yield json.dumps(event) + "\n"
+        except Exception:
+            logger.exception("Unhandled error in analysis stream")
+            yield json.dumps({"type": "error", "message": "Unexpected server error."}) + "\n"
+
+    response = StreamingHttpResponse(event_stream(), content_type="application/x-ndjson")
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"   # stop proxies (nginx) buffering the stream
+    return response

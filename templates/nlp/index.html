@@ -211,21 +211,41 @@ analyseBtn.addEventListener('click', async () => {
   if (note.length > 5000) { showInputError('Note exceeds 5000 characters.'); return; }
   hideInputError();
   setLoading(true);
-  try {
-    const resp = await fetch('/analyse/', {
+    try {
+    const resp = await fetch('/analyse/stream/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
       body: JSON.stringify({ note }),
     });
-    const data = await resp.json();
-    if (!resp.ok || (data.error && !data.entities)) { showError(data.error || 'Something went wrong.'); return; }
-    renderResults(data);
+    if (!resp.ok) {
+      const d = await resp.json().catch(() => ({}));
+      showError(d.error || 'Something went wrong.');
+      return;
+    }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '', finished = false;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const ev = JSON.parse(line);
+        if (ev.type === 'status')      btnLabel.textContent = ev.message;
+        else if (ev.type === 'result') { renderResults(ev.data); finished = true; }
+        else if (ev.type === 'error')  { showError(ev.message); finished = true; }
+      }
+    }
+    if (!finished) showError('The connection closed before a result arrived.');
   } catch (e) {
     showError('Network error — please check your connection.');
   } finally {
     setLoading(false);
   }
-});
+  });
 
 const CAT_LABELS = {
   symptoms: 'Symptoms', diseases: 'Diseases',
@@ -320,7 +340,7 @@ function setLoading(on) {
   analyseBtn.disabled = on;
   analyseBtn.style.opacity = on ? '0.6' : '1';
   btnLabel.textContent = on ? 'Analysing…' : 'Analyse';
-  placeholder.classList.toggle('hidden', on);
+  if (on) placeholder.classList.add('hidden');
   loadingState.classList.toggle('hidden', !on);
   if (on) { resultsContent.classList.add('hidden'); errorState.classList.add('hidden'); }
 }
