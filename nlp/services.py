@@ -1,17 +1,26 @@
 """
 nlp/services.py
-───────────────
-Groq LLM-only pipeline. BioBERT removed — Groq handles both
-entity extraction and clinical reasoning in one call.
+Preprocess -> LLM (Groq, Gemini fallback) -> schema validation -> one repair retry.
 """
 
 import re
-import json
+import time
 import logging
+
 from django.conf import settings
+from pydantic import ValidationError
+
 from .prompts import load_system_prompt, build_user_message, ACTIVE_VERSION
+from .schemas import Analysis, ModelRefusal, parse_output
 
 logger = logging.getLogger(__name__)
+
+MAX_REPAIR_ATTEMPTS = 1
+
+
+class LLMUnavailable(Exception):
+    """No provider could return a response."""
+
 
 # ── Clinical abbreviation map ─────────────────────────────────────────────────
 ABBREV_MAP = {
@@ -49,69 +58,91 @@ def preprocess_clinical_note(text: str) -> str:
     return text.strip()
 
 
-# ── LLM call ─────────────────────────────────────────────────────────────────
-def _call_groq(note: str) -> dict:
+# ── LLM providers (return raw text; validation happens later) ────────────────
+def _groq(messages: list) -> str:
     from groq import Groq
     client = Groq(api_key=settings.GROQ_API_KEY)
-    response = client.chat.completions.create(
-    model=settings.GROQ_MODEL,
-    messages=[
-        {"role": "system", "content": load_system_prompt()},
-        {"role": "user",   "content": build_user_message(note)},
-    ],
-    max_tokens=3000,
-    temperature=0.2,
-    reasoning_effort="low",
-)
-    return _safe_json_parse(response.choices[0].message.content)
+    resp = client.chat.completions.create(
+        model=settings.GROQ_MODEL,
+        messages=messages,
+        max_tokens=3000,
+        temperature=0.2,
+        reasoning_effort="low",
+        response_format={"type": "json_object"},  # remove this line if Groq returns a 400
+    )
+    choice = resp.choices[0]
+    if choice.finish_reason == "length":
+        logger.warning("Groq output truncated (hit max_tokens)")
+    return choice.message.content or ""
 
 
-def _call_gemini(note: str) -> dict:
+def _gemini(messages: list) -> str:
     import google.generativeai as genai
     genai.configure(api_key=settings.GEMINI_API_KEY)
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    prompt = load_system_prompt() + "\n\n" + build_user_message(note)
-    return _safe_json_parse(model.generate_content(prompt).text)
+    model = genai.GenerativeModel("gemini-1.5-flash")  # likely retired: update before relying on it
+    prompt = "\n\n".join(m["content"] for m in messages)
+    return model.generate_content(prompt).text or ""
 
 
-def call_llm(note: str) -> dict:
+def _complete(messages: list) -> tuple:
+    """Try providers in order. Returns (raw_text, provider_label)."""
     if settings.GROQ_API_KEY:
         try:
-            return _call_groq(note)
+            return _groq(messages), f"groq:{settings.GROQ_MODEL}"
         except Exception as e:
-            logger.warning("Groq failed: %s — trying Gemini", e)
+            logger.warning("Groq failed: %s", e)
     if settings.GEMINI_API_KEY:
         try:
-            return _call_gemini(note)
+            return _gemini(messages), "gemini"
         except Exception as e:
-            logger.error("Gemini also failed: %s", e)
-    return {"error": "No LLM provider available. Set GROQ_API_KEY in .env"}
+            logger.error("Gemini failed: %s", e)
+    raise LLMUnavailable("The analysis service is temporarily unavailable. Please try again.")
 
 
-def _safe_json_parse(raw: str) -> dict:
-    if not raw:
-        return {"error": "Empty LLM response"}
-    for cleaner in [
-        lambda t: t,
-        lambda t: re.sub(r"```(?:json)?", "", t).strip("` \n"),
-        lambda t: (re.search(r"\{.*\}", t, re.DOTALL) or type("", (), {"group": lambda s: None})()).group(),
-    ]:
+# ── Validated call with one repair retry ──────────────────────────────────────
+def _summarise_error(exc: Exception) -> str:
+    if isinstance(exc, ValidationError):
+        return "; ".join(
+            f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors()[:8]
+        )
+    return str(exc)
+
+
+def get_valid_analysis(note: str) -> tuple:
+    """Returns (Analysis, meta). Raises ModelRefusal, LLMUnavailable or ValueError."""
+    messages = [
+        {"role": "system", "content": load_system_prompt()},
+        {"role": "user",   "content": build_user_message(note)},
+    ]
+    started = time.perf_counter()
+    last_error = "unknown"
+
+    for attempt in range(MAX_REPAIR_ATTEMPTS + 1):
+        raw, provider = _complete(messages)
         try:
-            cleaned = cleaner(raw)
-            if cleaned:
-                return json.loads(cleaned)
-        except (json.JSONDecodeError, AttributeError):
-            continue
-    return {
-        "error": "Could not parse LLM response — please retry",
-        "entities": {"symptoms": [], "diseases": [], "drugs": [], "lab_values": [], "anatomy": []},
-        "possible_conditions": [],
-        "red_flags": [],
-        "investigations": ["Manual clinical assessment required"],
-        "management_considerations": [],
-        "clinical_note": "Response could not be parsed.",
-        "disclaimer": "Always defer to a qualified clinician.",
-    }
+            analysis = parse_output(raw)
+            meta = {
+                "prompt_version": ACTIVE_VERSION,
+                "provider": provider,
+                "repaired": attempt > 0,
+                "latency_ms": int((time.perf_counter() - started) * 1000),
+            }
+            return analysis, meta
+        except ModelRefusal:
+            raise
+        except (ValueError, ValidationError) as e:
+            last_error = _summarise_error(e)
+            logger.warning("Invalid model output (attempt %d): %s", attempt + 1, last_error)
+            messages = messages + [
+                {"role": "assistant", "content": raw},
+                {"role": "user", "content": (
+                    "Your previous reply was invalid: " + last_error + ". "
+                    "Reply again with ONLY the corrected JSON object, exactly matching "
+                    "the required format."
+                )},
+            ]
+
+    raise ValueError(f"Model output failed validation after repair: {last_error}")
 
 
 # ── Input validation ──────────────────────────────────────────────────────────
@@ -140,14 +171,16 @@ def run_pipeline(clinical_note: str) -> dict:
         return {"error": msg}
 
     cleaned = preprocess_clinical_note(clinical_note)
-    result  = call_llm(cleaned)
-    if "error" in result and not result.get("possible_conditions"):
-        return {"error": result["error"]}
 
-    # Normalise: pull entities out to top level for the view
-    entities   = result.pop("entities", {
-        "symptoms": [], "diseases": [], "drugs": [], "lab_values": [], "anatomy": []
-    })
-    llm_result = result
+    try:
+        analysis, meta = get_valid_analysis(cleaned)
+    except ModelRefusal as e:
+        return {"error": str(e)}
+    except LLMUnavailable as e:
+        return {"error": str(e)}
+    except ValueError:
+        return {"error": "The model returned an unreadable response. Please try again."}
 
-    return {"entities": entities, "llm_result": llm_result}
+    data = analysis.model_dump()
+    entities = data.pop("entities")
+    return {"entities": entities, "llm_result": data, "meta": meta}
